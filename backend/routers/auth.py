@@ -1,13 +1,10 @@
 """Authentication routes: register, login, logout."""
-from datetime import timedelta
-
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from config import ACCESS_TOKEN_EXPIRE_MINUTES
-from database import get_db
-from dependencies import oauth2_scheme
-from models import Token, UserLogin, UserOut, UserRegister
-from security import create_access_token, decode_token, hash_password, verify_password
+from ..database import get_db
+from ..dependencies import oauth2_scheme, unauthorized_exception
+from ..models import Token, UserLogin, UserOut, UserRegister
+from ..security import create_access_token, decode_token, hash_password, verify_password
 
 router = APIRouter(tags=["auth"])
 
@@ -43,16 +40,9 @@ def login(user_in: UserLogin, db=Depends(get_db)):
         user = cur.fetchone()
 
     if user is None or not verify_password(user_in.password, user["password_hash"]):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise unauthorized_exception("Incorrect email or password")
 
-    access_token = create_access_token(
-        subject=user_in.email,
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
-    )
+    access_token = create_access_token(subject=user_in.email)
     return {"access_token": access_token, "token_type": "bearer"}
 
 
@@ -61,11 +51,7 @@ def logout(token: str = Depends(oauth2_scheme), db=Depends(get_db)):
     """Revoke the current access token so it can no longer be used."""
     payload = decode_token(token, verify_exp=False)
     if payload is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise unauthorized_exception("Invalid token")
 
     jti = payload.get("jti")
     if jti:

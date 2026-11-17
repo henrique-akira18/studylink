@@ -1,22 +1,28 @@
 """Shared FastAPI dependencies (authentication)."""
-import psycopg2
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from psycopg2.extras import RealDictCursor
 
-from config import DATABASE_URL
-from security import decode_token
+from .database import db_connection
+from .security import decode_token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
 
-def credentials_exception() -> HTTPException:
-    """Build a standard 401 response for invalid credentials."""
+def unauthorized_exception(
+    detail: str = "Could not validate credentials",
+) -> HTTPException:
+    """Build a standard 401 response for invalid or revoked credentials."""
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
+        detail=detail,
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+
+def credentials_exception() -> HTTPException:
+    """Build the standard 401 response used by protected routes."""
+    return unauthorized_exception()
 
 
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
@@ -28,8 +34,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
     email = payload.get("sub")
     jti = payload.get("jti")
 
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-    try:
+    with db_connection(cursor_factory=RealDictCursor) as conn:
         with conn.cursor() as cur:
             if jti:
                 cur.execute("SELECT 1 FROM revoked_tokens WHERE jti = %s", (jti,))
@@ -40,8 +45,6 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
                 (email,),
             )
             user = cur.fetchone()
-    finally:
-        conn.close()
 
     if user is None:
         raise credentials_exception()

@@ -1,15 +1,17 @@
 """Academic profile routes."""
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from database import get_db
-from dependencies import get_current_user
-from models import AcademicProfileOut, AcademicProfileUpdate
+from ..database import get_db
+from ..dependencies import get_current_user
+from ..models import AcademicProfileOut, AcademicProfileUpdate
 
 router = APIRouter(tags=["profile"])
 
 _PROFILE_COLUMNS = "name, bio, academic_level, subjects, interests, updated_at"
+_PROFILE_SELECT = f"SELECT {_PROFILE_COLUMNS} FROM academic_profiles WHERE user_id = %s"
+_PROFILE_SELECT_FOR_UPDATE = f"{_PROFILE_SELECT} FOR UPDATE"
 
 
 def _empty_profile() -> Dict[str, Any]:
@@ -23,6 +25,18 @@ def _empty_profile() -> Dict[str, Any]:
     }
 
 
+def _fetch_profile(cur, user_id: int, for_update: bool = False) -> Optional[Dict[str, Any]]:
+    """Fetch a user's academic profile, optionally locking the row."""
+    statement = _PROFILE_SELECT_FOR_UPDATE if for_update else _PROFILE_SELECT
+    cur.execute(statement, (user_id,))
+    return cur.fetchone()
+
+
+def _with_email(profile: Dict[str, Any], email: str) -> Dict[str, Any]:
+    """Attach the owner's email to a profile row for the response model."""
+    return {**profile, "email": email}
+
+
 def _upsert_profile(
     profile_in: AcademicProfileUpdate,
     current_user: dict,
@@ -32,12 +46,7 @@ def _upsert_profile(
     changes = profile_in.model_dump(exclude_unset=True)
 
     with db.cursor() as cur:
-        cur.execute(
-            f"SELECT {_PROFILE_COLUMNS} FROM academic_profiles "
-            "WHERE user_id = %s FOR UPDATE",
-            (current_user["id"],),
-        )
-        existing = cur.fetchone()
+        existing = _fetch_profile(cur, current_user["id"], for_update=True)
 
         profile = _empty_profile()
         if existing is not None:
@@ -70,7 +79,7 @@ def _upsert_profile(
         saved = cur.fetchone()
 
     db.commit()
-    return {**saved, "email": current_user["email"]}
+    return _with_email(saved, current_user["email"])
 
 
 @router.get("/me/profile", response_model=AcademicProfileOut)
@@ -80,11 +89,7 @@ def read_academic_profile(
 ):
     """Return the academic profile of the authenticated student."""
     with db.cursor() as cur:
-        cur.execute(
-            f"SELECT {_PROFILE_COLUMNS} FROM academic_profiles WHERE user_id = %s",
-            (current_user["id"],),
-        )
-        profile = cur.fetchone()
+        profile = _fetch_profile(cur, current_user["id"])
 
     if profile is None:
         raise HTTPException(
@@ -92,7 +97,7 @@ def read_academic_profile(
             detail="Academic profile not found",
         )
 
-    return {**profile, "email": current_user["email"]}
+    return _with_email(profile, current_user["email"])
 
 
 @router.put("/me/profile", response_model=AcademicProfileOut)

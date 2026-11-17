@@ -7,19 +7,26 @@ from typing import Optional
 import jwt
 from jwt.exceptions import PyJWTError as JWTError
 
-from config import ACCESS_TOKEN_EXPIRE_MINUTES, ALGORITHM, SECRET_KEY
+from .config import ACCESS_TOKEN_EXPIRE_MINUTES, ALGORITHM, SECRET_KEY
+
+_PBKDF2_ITERATIONS = 100_000
+_SALT_BYTES = 16
+
+
+def _derive_password_hash(password: str, salt: str) -> str:
+    """Derive the hexadecimal PBKDF2 hash for a password and salt."""
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt.encode("utf-8"),
+        _PBKDF2_ITERATIONS,
+    ).hex()
 
 
 def hash_password(password: str) -> str:
     """Hash a password using PBKDF2-HMAC-SHA256 with a random salt."""
-    salt = secrets.token_hex(16)
-    pwd_hash = hashlib.pbkdf2_hmac(
-        "sha256",
-        password.encode("utf-8"),
-        salt.encode("utf-8"),
-        100_000,
-    )
-    return f"{salt}:{pwd_hash.hex()}"
+    salt = secrets.token_hex(_SALT_BYTES)
+    return f"{salt}:{_derive_password_hash(password, salt)}"
 
 
 def verify_password(plain_password: str, stored_password: str) -> bool:
@@ -28,12 +35,7 @@ def verify_password(plain_password: str, stored_password: str) -> bool:
         salt, pwd_hash = stored_password.split(":")
     except ValueError:
         return False
-    computed = hashlib.pbkdf2_hmac(
-        "sha256",
-        plain_password.encode("utf-8"),
-        salt.encode("utf-8"),
-        100_000,
-    ).hex()
+    computed = _derive_password_hash(plain_password, salt)
     return secrets.compare_digest(computed, pwd_hash)
 
 

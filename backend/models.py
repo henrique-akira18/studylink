@@ -4,6 +4,9 @@ from typing import List, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+_MAX_LIST_ITEMS = 50
+_MAX_ITEM_LENGTH = 100
+
 
 class UserRegister(BaseModel):
     email: EmailStr
@@ -33,8 +36,8 @@ class AcademicProfileUpdate(BaseModel):
         max_length=100,
         description="Nível acadêmico (ex.: Ensino Médio, Graduação, Pós-graduação)",
     )
-    subjects: Optional[List[str]] = Field(default=None, max_length=50)
-    interests: Optional[List[str]] = Field(default=None, max_length=50)
+    subjects: Optional[List[str]] = Field(default=None, max_length=_MAX_LIST_ITEMS)
+    interests: Optional[List[str]] = Field(default=None, max_length=_MAX_LIST_ITEMS)
 
     @field_validator("name", "bio", "academic_level")
     @classmethod
@@ -58,8 +61,10 @@ class AcademicProfileUpdate(BaseModel):
             item = item.strip()
             if not item:
                 continue
-            if len(item) > 100:
-                raise ValueError("Cada matéria/interesse deve ter no máximo 100 caracteres")
+            if len(item) > _MAX_ITEM_LENGTH:
+                raise ValueError(
+                    f"Cada matéria/interesse deve ter no máximo {_MAX_ITEM_LENGTH} caracteres"
+                )
             key = item.casefold()
             if key in seen:
                 continue
