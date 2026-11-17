@@ -37,6 +37,10 @@ export default function Login() {
           <p>Acesse seu perfil e continue de onde parou.</p>
         </div>
 
+        <div className="alert alert-info">
+          Conta de demonstração: <strong>demo@studylink.com</strong> / <strong>123456</strong>
+        </div>
+
         {error && <div className="alert alert-error" role="alert">{error}</div>}
 
         <form onSubmit={handleSubmit} className="form">

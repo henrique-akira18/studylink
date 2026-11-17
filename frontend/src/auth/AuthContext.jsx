@@ -1,16 +1,14 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { authApi } from '../api.js';
 
-const TOKEN_KEY = 'studylink_token';
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY));
+  const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(() => Boolean(localStorage.getItem(TOKEN_KEY)));
+  const [loading, setLoading] = useState(false);
 
   function clearSession() {
-    localStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setUser(null);
   }
@@ -44,7 +42,6 @@ export function AuthProvider({ children }) {
 
   async function login(email, password) {
     const data = await authApi.login(email, password);
-    localStorage.setItem(TOKEN_KEY, data.access_token);
     setToken(data.access_token);
     return data;
   }
@@ -58,7 +55,7 @@ export function AuthProvider({ children }) {
     try {
       if (token) await authApi.logout(token);
     } catch {
-      // A sessão local é encerrada mesmo que a revogação falhe.
+      // A sessão em memória é encerrada mesmo se a saída falhar.
     }
     clearSession();
   }

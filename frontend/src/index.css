@@ -610,6 +610,13 @@ p {
   color: var(--success);
 }
 
+.alert-info {
+  border: 1px solid #cdd2f7;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  font-weight: 500;
+}
+
 .tag-input {
   display: flex;
   flex-wrap: wrap;
