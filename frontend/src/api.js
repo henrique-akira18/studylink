@@ -1,53 +1,121 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+// Dados simulados apenas em memória. Ao recarregar a página, tudo é resetado.
+const DEMO_EMAIL = 'demo@studylink.com';
 
-function getErrorMessage(data) {
-  const detail = data?.detail;
+const state = {
+  users: new Map([
+    [
+      DEMO_EMAIL,
+      {
+        email: DEMO_EMAIL,
+        password: '123456',
+        createdAt: new Date().toISOString(),
+      },
+    ],
+  ]),
+  profiles: new Map([
+    [
+      DEMO_EMAIL,
+      {
+        name: 'Ana Oliveira',
+        bio: 'Estudante de Ciência da Computação. Gosto de estudar em grupo e projetos de programação.',
+        academic_level: 'Graduação',
+        subjects: ['Programação', 'Matemática', 'Banco de Dados'],
+        interests: ['Estudos em grupo', 'Pesquisa', 'Projetos'],
+        updated_at: new Date().toISOString(),
+      },
+    ],
+  ]),
+  tokens: new Map(),
+};
 
-  if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail)) {
-    return detail.map((item) => item.msg || String(item)).join(' ');
-  }
-
-  return null;
+function normalizeEmail(email) {
+  return String(email).trim().toLowerCase();
 }
 
-export async function apiRequest(path, { method = 'GET', body, token } = {}) {
-  const headers = {};
+function createToken() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `token-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
-  if (token) headers.Authorization = `Bearer ${token}`;
+function getUserFromToken(token) {
+  const email = state.tokens.get(token);
+  if (!email) throw new Error('Sessão inválida. Entre novamente.');
 
-  let response;
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-  } catch {
-    throw new Error('Não foi possível conectar ao servidor.');
-  }
+  const user = state.users.get(email);
+  if (!user) throw new Error('Sessão inválida. Entre novamente.');
 
-  const data = await response.json().catch(() => null);
+  return user;
+}
 
-  if (!response.ok) {
-    throw new Error(getErrorMessage(data) || 'Não foi possível concluir a solicitação.');
-  }
-
-  return data;
+function publicUser(user) {
+  return { email: user.email, created_at: user.createdAt };
 }
 
 export const authApi = {
-  register: (email, password) =>
-    apiRequest('/register', { method: 'POST', body: { email, password } }),
-  login: (email, password) =>
-    apiRequest('/login', { method: 'POST', body: { email, password } }),
-  logout: (token) => apiRequest('/logout', { method: 'POST', token }),
-  me: (token) => apiRequest('/me', { token }),
+  async register(email, password) {
+    const key = normalizeEmail(email);
+
+    if (state.users.has(key)) {
+      throw new Error('Este e-mail já está cadastrado.');
+    }
+
+    const user = {
+      email: key,
+      password,
+      createdAt: new Date().toISOString(),
+    };
+
+    state.users.set(key, user);
+    return publicUser(user);
+  },
+
+  async login(email, password) {
+    const key = normalizeEmail(email);
+    const user = state.users.get(key);
+
+    if (!user || user.password !== password) {
+      throw new Error('E-mail ou senha incorretos.');
+    }
+
+    const access_token = createToken();
+    state.tokens.set(access_token, key);
+
+    return { access_token, token_type: 'bearer' };
+  },
+
+  async logout(token) {
+    state.tokens.delete(token);
+    return { detail: 'Sessão encerrada.' };
+  },
+
+  async me(token) {
+    return publicUser(getUserFromToken(token));
+  },
 };
 
 export const profileApi = {
-  get: (token) => apiRequest('/me/profile', { token }),
-  save: (profile, token) =>
-    apiRequest('/me/profile', { method: 'PUT', body: profile, token }),
+  async get(token) {
+    const user = getUserFromToken(token);
+    const profile = state.profiles.get(user.email);
+
+    if (!profile) throw new Error('Academic profile not found');
+
+    return { email: user.email, ...profile };
+  },
+
+  async save(profile, token) {
+    const user = getUserFromToken(token);
+
+    const saved = {
+      name: profile.name || null,
+      bio: profile.bio || null,
+      academic_level: profile.academic_level || null,
+      subjects: profile.subjects || [],
+      interests: profile.interests || [],
+      updated_at: new Date().toISOString(),
+    };
+
+    state.profiles.set(user.email, saved);
+    return { email: user.email, ...saved };
+  },
 };
